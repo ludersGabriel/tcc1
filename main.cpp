@@ -16,6 +16,14 @@ int main(int argc, char** argv){
 
   Peer* peer = new Peer(host, port);
 
+  for(int i = 0; i < 10; i++){
+    string hash = string(host + ":" + to_string(port) + ":" + to_string(i));
+  
+    Block* block = new Block(i, hash);
+
+    peer->blocks.push_back(block);
+  }
+
   peer->dispatch(); 
 
   return 0;

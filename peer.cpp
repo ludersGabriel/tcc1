@@ -99,6 +99,7 @@ void getPeersAddresses(Peer* peer){
 Peer::Peer(string host, int port){
   this->host = host;
   this->port = port;
+  this->hostName = host + ":" + to_string(port);
 
   createBase(this);
   createListener(this);
@@ -139,23 +140,44 @@ void Peer::dispatch(){
   event_base_dispatch(this->base);
 }
 
+void Peer::messageToBuffer(evbuffer *output, Message* message){
+  evbuffer_add(output, message, sizeof(Message) - sizeof(vector<Block*>));
+
+  for(Block* block : message->blocks){
+    evbuffer_add(output, block, sizeof(Block));
+  }
+
+  delete message;
+}
+
 void Peer::read_cb(struct bufferevent* bev, void *ctx){
   Peer* peer = (Peer*)ctx;
 
-  struct evbuffer* input = bufferevent_get_input(bev);
   struct evbuffer* output = bufferevent_get_output(bev);
-
-  cout << "read: " << evbuffer_pullup(input, -1) << endl;
+  struct evbuffer* input = bufferevent_get_input(bev);
   
-  peer->receivedId++;
+  Message* message = peer->messageFromBuffer(input);
 
-  evbuffer_add_printf(
-    output, 
-    "Response to %d from %s:%d\n", 
-    peer->receivedId, 
-    peer->host.c_str(), 
-    peer->port
+  cout << "read: " << message->blockCount << " blocks from" << message->hostName << endl;
+
+  for(Block* block : message->blocks){
+    cout << "\tblock: " << block->id << " " << block->hash << endl;
+  }
+
+  delete message;
+
+  string info = string("Response to ") + to_string(++(peer->receivedId)) + " from " + peer->hostName;
+
+  Message* response = new Message(
+    peer->sentId,
+    1,
+    info,
+    peer->blocks,
+    string(peer->host + ":" + to_string(peer->port)),
+    peer->blocks.size()
   );
+
+  peer->messageToBuffer(output, response);
 }
 
 void Peer::event_cb(struct bufferevent *bev, short events, void *ctx){
@@ -170,14 +192,12 @@ void Peer::event_cb(struct bufferevent *bev, short events, void *ctx){
   } 
 
   if(events & BEV_EVENT_CONNECTED){
-    string* message = (string* )ctx;
-
-    cout << *message << endl;
+    Context *c = (Context*)ctx;
+    Message *message = c->message;
 
     struct evbuffer* output = bufferevent_get_output(bev);
 
-    evbuffer_add_printf(output, "%s", message->c_str());
-    delete message;
+    peer->messageToBuffer(output, message);
   }
 
 }
@@ -217,32 +237,50 @@ void Peer::readKeyboard_cb(int fd, short kind, void *ctx){
   
   for(string addr : peer->peersAddresses){
     peer->sentId++;
-    string *message = new string(
-      string("Message ") 
-      + to_string(peer->sentId)
-      + " from " 
-      + peer->host 
-      + ":" 
-      + to_string(peer->port) 
-      + "\n"
-      );
     
+    Message* message = new Message(
+      peer->sentId,
+      1,
+      "Hello",
+      peer->blocks,
+      string(peer->host + ":" + to_string(peer->port)),
+      peer->blocks.size()
+    );
+
     peer->sendMessage(message, addr);
   }
 }
 
+Message* Peer::messageFromBuffer(evbuffer* input){
+  Message* message = new Message();
+  evbuffer_remove(input, message, sizeof(Message) - sizeof(vector<Block*>));
+
+  message->blocks = vector<Block*>();
+  for(int i = 0; i < message->blockCount; i++){
+    Block* block = new Block();
+    evbuffer_remove(input, block, sizeof(Block));
+    message->blocks.push_back(block);
+  }
+
+  return message;
+}
+
 // get response and close connection
 void Peer::clientRead_cb(struct bufferevent* bev, void *ctx){
-  Peer* peer = (Peer*)ctx;
+  Context* c = (Context*)ctx;
+  Peer* peer = c->peer;
 
   struct evbuffer* input = bufferevent_get_input(bev);
 
-  cout << "read response as client: " << evbuffer_pullup(input, -1) << endl;
+  Message* message = peer->messageFromBuffer(input);
+  
+  cout << "read response as client: " << message->info << endl; 
 
   bufferevent_free(bev);
+  delete c;
 }
 
-void Peer::sendMessage(string* message, string addr){
+void Peer::sendMessage(Message* message, string addr){
   string hostname = addr.substr(0, addr.find(":"));
   int port = atoi(addr.substr(addr.find(":") + 1).c_str());
 
@@ -254,12 +292,17 @@ void Peer::sendMessage(string* message, string addr){
     BEV_OPT_CLOSE_ON_FREE
   );
 
+  Context *ctx = new Context(
+    this,
+    message
+  );
+
   bufferevent_setcb(
     bev,
     this->clientRead_cb,
     NULL,
     this->event_cb,
-    message
+    ctx
   );
 
   bufferevent_enable(bev, EV_READ | EV_WRITE);
