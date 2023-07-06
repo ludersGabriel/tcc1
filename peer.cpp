@@ -95,6 +95,48 @@ void getPeersAddresses(Peer* peer){
   }
 }
 
+void readBlocks(Peer* peer){
+  Block* genesis = Block::genesisBlock();
+  peer->blocks.push_back(genesis);
+
+  string fileName = string("blocks:") + peer->hostName + ".txt";
+
+  ifstream file(fileName);
+
+  if(!file){
+    cerr << "Could not open file " << fileName << endl;
+    exit(1);
+  }
+
+  string line;
+  while(getline(file, line)){
+    if(line == "") continue;
+    if(line[0] == '/' && line[1] == '/') continue;
+
+    stringstream ss(line);
+    vector<string> data;
+    while(!ss.eof()){ 
+      string word;
+      
+      getline(ss, word, ',');
+
+      data.push_back(word);
+    }
+
+    string previousHash = peer->blocks[peer->blocks.size() - 1]->hash;
+    Block* block = new Block(
+      previousHash,
+      atoi(data[0].c_str()),
+      data[1],
+      data[2],
+      atoi(data[3].c_str())
+    );
+
+    peer->blocks.push_back(block);
+  }  
+
+}
+
 // * Constructor
 Peer::Peer(string host, int port){
   this->host = host;
@@ -105,8 +147,14 @@ Peer::Peer(string host, int port){
   createListener(this);
   createKeyboardEvent(this);
   getPeersAddresses(this);
+  
+  cout << "Listening on " << host << ":" << port << endl << endl;
 
-  cout << "Listening on " << host << ":" << port << endl;
+  cout << "Generating block hashs.." << endl;
+  readBlocks(this);
+  cout << "Pre-processing done!\n\n";
+
+  this->interface = new Interface(this);
 }
 
 void Peer::acceptConnection_cb(
@@ -161,7 +209,9 @@ void Peer::read_cb(struct bufferevent* bev, void *ctx){
   cout << "read: " << message->blockCount << " blocks from" << message->hostName << endl;
 
   for(Block* block : message->blocks){
-    cout << "\tblock: " << block->id << " " << block->hash << endl;
+    cout << "\tblock: " << endl;
+    cout << "\t\tprevious block: " << block->previousHash << endl;
+    cout << "\t\tmy hash: " << block->hash << endl;
   }
 
   delete message;
@@ -217,24 +267,14 @@ void Peer::acceptError_cb(
 void Peer::readKeyboard_cb(int fd, short kind, void *ctx){
   Peer* peer = (Peer*)ctx;
 
-  char buf[1024];
-  int n = read(fd, buf, sizeof(buf));
+  string buf = peer->interface->readFromTerminal(fd);
 
-  if(n <= 0){
-    cerr << "Error reading from keyboard" << endl;
-    return;
-  }
-
-  buf[n] = '\0';
-
-  cout << "read: " << buf << endl;
-
-  if(strcmp(buf, "quit\n") == 0){
-    event_base_loopexit(peer->base, NULL);
-    return;
-  }
-
+  if(!buf.length()) return;
   
+  peer->interface->treatInput(buf);
+
+  return;
+
   for(string addr : peer->peersAddresses){
     peer->sentId++;
     

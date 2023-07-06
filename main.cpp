@@ -1,10 +1,12 @@
 
 #include <bits/stdc++.h>
 #include "peer.h"
-
+#include "interface.h"
 
 using namespace std;
+
 int main(int argc, char** argv){
+  srand(time(NULL));
 
   if(argc < 3){
     cerr << "Usage: " << argv[0] << " <host> <port>" << endl;
@@ -16,14 +18,7 @@ int main(int argc, char** argv){
 
   Peer* peer = new Peer(host, port);
 
-  for(int i = 0; i < 10; i++){
-    string hash = string(host + ":" + to_string(port) + ":" + to_string(i));
-  
-    Block* block = new Block(i, hash);
-
-    peer->blocks.push_back(block);
-  }
-
+  peer->interface->listCommands();
   peer->dispatch(); 
 
   return 0;

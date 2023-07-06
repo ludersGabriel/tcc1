@@ -2,7 +2,7 @@
 
 CC=g++
 FLAGS=-Wall -g
-LIBS=-levent
+LIBS=-levent -lcrypto
 SRC=$(wildcard *.cpp)
 OBJS=$(subst .cpp,.o,$(SRC))
 RM=rm -f

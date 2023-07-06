@@ -1,2 +1,2 @@
-vanaheim:9090
-vanaheim:8080
+astora:9090
+astora:8080

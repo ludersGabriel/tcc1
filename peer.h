@@ -15,51 +15,13 @@
 
 #include <bits/stdc++.h>
 
+#include "message.h"
+#include "block.h"
+#include "interface.h"
+
 using namespace std;
 
-class Block {
-  public: 
-    int id;
-    char hash[100];
-
-    Block(){}
-    Block(int id, string hash){
-      this->id = id;
-      if(hash.size() < 100)
-        strcpy(this->hash, hash.c_str());
-    }
-};
-
-class Message {
-  public:
-    int id;
-    int type;
-    char info[100];
-    char hostName[100];
-    
-    int blockCount;
-    vector<Block*> blocks;
-
-    Message(){}
-    Message(
-      int id, 
-      int type, 
-      string info, 
-      vector<Block*> &blocks,
-      string hostName,
-      int blockCount
-    ){
-      this->id = id;
-      this->type = type;
-      strcpy(this->info, info.c_str());
-
-      strcpy(this->hostName, hostName.c_str());
-      this->blockCount = blockCount;
-
-      this->blocks = blocks;
-    }
-};
-
+class Interface; 
 class Peer{
   public:
     string host;
@@ -67,6 +29,8 @@ class Peer{
     int receivedId = 0;
     int sentId = 0;
     string hostName;
+
+    Interface* interface;
     
     vector<string> peersAddresses;
     vector<Block*> blocks;
