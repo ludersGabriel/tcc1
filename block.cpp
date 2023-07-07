@@ -4,8 +4,8 @@
 Transaction::Transaction(){}
 
 Transaction::Transaction(string from, string to, int amount){
-  this->from = from;
-  this->to = to;
+  strcpy(this->from, from.c_str());
+  strcpy(this->to, to.c_str());
   this->amount = amount;
 }
 
@@ -56,8 +56,8 @@ void Block::hashMe(){
 
     string blockData = 
       this->previousHash + 
-      this->transaction.from + 
-      this->transaction.to + 
+      string(this->transaction.from) + 
+      string(this->transaction.to) + 
       to_string(this->transaction.amount) + 
       to_string(this->nonce);
 

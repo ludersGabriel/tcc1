@@ -29,10 +29,11 @@ class Peer{
     int receivedId = 0;
     int sentId = 0;
     string hostName;
+    string username;
 
     Interface* interface;
     
-    vector<string> peersAddresses;
+    map<string, string> peersAddresses;
     vector<Block*> blocks;
 
     struct event_base* base;
@@ -59,6 +60,7 @@ class Peer{
     static void clientRead_cb(struct bufferevent* bev, void *ctx);
     
     void dispatch();
+    void quit();
     void sendMessage(Message* message, string adrr);
     Message* messageFromBuffer(evbuffer* input);
     void messageToBuffer(evbuffer* output, Message* message);

@@ -8,8 +8,8 @@ using namespace std;
 
 class Transaction {
   public:
-    string from;
-    string to;
+    char from[100];
+    char to[100];
     int amount;
 
     Transaction();

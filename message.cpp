@@ -4,10 +4,10 @@ Message::Message(){}
 
 Message::Message(
   int id, 
-  int type, 
+  MessageType type, 
   string info, 
-  vector<Block*> &blocks,
   string hostName,
+  vector<Block*> &blocks,
   int blockCount
 ){
   this->id = id;

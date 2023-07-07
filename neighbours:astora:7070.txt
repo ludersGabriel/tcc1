@@ -1,0 +1,2 @@
+astora:7070,berto
+astora:8080,bala

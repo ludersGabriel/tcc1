@@ -6,12 +6,18 @@
 
 using namespace std;
 
+enum MessageType {
+  HELLO,
+  QUIT
+};
+
 class Message {
   public:
     int id;
-    int type;
+    MessageType type;
     char info[100];
     char hostName[100];
+    
     
     int blockCount;
     vector<Block*> blocks;
@@ -19,10 +25,10 @@ class Message {
     Message();
     Message(
       int id, 
-      int type, 
+      MessageType type, 
       string info, 
-      vector<Block*> &blocks,
       string hostName,
+      vector<Block*> &blocks,
       int blockCount
     );
 };

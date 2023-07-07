@@ -84,14 +84,34 @@ void createKeyboardEvent(Peer* peer){
 }
 
 void getPeersAddresses(Peer* peer){
-  ifstream file("peers.txt");
-  string line;
+  string fileName = string("neighbours:") + peer->hostName + ".txt";
+  
+  ifstream file(fileName);
 
-  string myAddress = peer->host + ":" + to_string(peer->port);
+  if(!file){
+    cerr << "Could not open file " << fileName << endl;
+    exit(1);
+  }
+  
+  string line;
+  string myAddress = peer->hostName;
 
   while(getline(file, line)){
-    if(line == myAddress) continue;
-    peer->peersAddresses.push_back(line);
+    stringstream ss(line);
+    vector<string> data;
+    
+    while(!ss.eof()){ 
+      string word;
+      
+      getline(ss, word, ',');
+
+      data.push_back(word);
+    }
+    
+    peer->peersAddresses[data[0]] = data[1];
+
+    if(data[0] == myAddress)
+      peer->username = data[1];
   }
 }
 
@@ -110,9 +130,6 @@ void readBlocks(Peer* peer){
 
   string line;
   while(getline(file, line)){
-    if(line == "") continue;
-    if(line[0] == '/' && line[1] == '/') continue;
-
     stringstream ss(line);
     vector<string> data;
     while(!ss.eof()){ 
@@ -137,6 +154,48 @@ void readBlocks(Peer* peer){
 
 }
 
+void quitMessage(Peer* peer){
+  for(auto addr : peer->peersAddresses){
+    if(addr.first == peer->hostName) continue;
+
+    Message* message = new Message(
+      (peer->sentId)++,
+      QUIT,
+      "",
+      peer->hostName,
+      peer->blocks,
+      peer->blocks.size()
+    );
+
+    peer->sendMessage(
+      message,
+      addr.first
+    );
+  }
+}
+
+void helloMessage(Peer* peer){
+  for(auto addr : peer->peersAddresses){
+    if(addr.first == peer->hostName) continue;
+
+    string info = peer->username;
+    
+    Message* message = new Message(
+      (peer->sentId)++,
+      HELLO,
+      info,
+      peer->hostName,
+      peer->blocks,
+      peer->blocks.size()
+    );
+
+    peer->sendMessage(
+      message,
+      addr.first
+    );
+  }
+}
+
 // * Constructor
 Peer::Peer(string host, int port){
   this->host = host;
@@ -153,6 +212,8 @@ Peer::Peer(string host, int port){
   cout << "Generating block hashs.." << endl;
   readBlocks(this);
   cout << "Pre-processing done!\n\n";
+
+  helloMessage(this);
 
   this->interface = new Interface(this);
 }
@@ -206,33 +267,31 @@ void Peer::read_cb(struct bufferevent* bev, void *ctx){
   
   Message* message = peer->messageFromBuffer(input);
 
-  cout << "read: " << message->blockCount << " blocks from" << message->hostName << endl;
+  string responseInfo;
 
-  for(Block* block : message->blocks){
-    cout << "\tblock: " << endl;
-    cout << "\t\tprevious block: " << block->previousHash << endl;
-    cout << "\t\tmy hash: " << block->hash << endl;
+  if(message->type == HELLO){
+    responseInfo = peer->username;
+    
+    Message* response = new Message(
+      message->id,
+      HELLO,
+      responseInfo,
+      peer->hostName,
+      peer->blocks,
+      peer->blocks.size()
+    );
+
+    peer->peersAddresses[message->hostName] = message->info;
+    peer->messageToBuffer(output, response);
   }
+  else if(message->type == QUIT){
+    responseInfo = "";
 
-  delete message;
-
-  string info = string("Response to ") + to_string(++(peer->receivedId)) + " from " + peer->hostName;
-
-  Message* response = new Message(
-    peer->sentId,
-    1,
-    info,
-    peer->blocks,
-    string(peer->host + ":" + to_string(peer->port)),
-    peer->blocks.size()
-  );
-
-  peer->messageToBuffer(output, response);
+    peer->peersAddresses.erase(message->hostName);
+  }
 }
 
 void Peer::event_cb(struct bufferevent *bev, short events, void *ctx){
-  Peer* peer = (Peer*) ctx;
-
   if(events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)){
     bufferevent_free(bev);
   }
@@ -244,20 +303,28 @@ void Peer::event_cb(struct bufferevent *bev, short events, void *ctx){
   if(events & BEV_EVENT_CONNECTED){
     Context *c = (Context*)ctx;
     Message *message = c->message;
+    Peer *peer = c->peer;
+
+    if(message->type == QUIT){
+      cout << "Quitting..\n\n";
+
+      event_base_loopexit(peer->base, NULL);
+    }
 
     struct evbuffer* output = bufferevent_get_output(bev);
 
     peer->messageToBuffer(output, message);
   }
+}
 
+void Peer::quit(){
+  quitMessage(this);
 }
 
 void Peer::acceptError_cb(
   struct evconnlistener *listener,
   void *ctx
 ){
-  Peer* peer = (Peer*)ctx;
-
   struct event_base* base = evconnlistener_get_base(listener);
   int err = EVUTIL_SOCKET_ERROR();
   cerr << "Error: " << err << " = " << evutil_socket_error_to_string(err) << endl;
@@ -272,23 +339,6 @@ void Peer::readKeyboard_cb(int fd, short kind, void *ctx){
   if(!buf.length()) return;
   
   peer->interface->treatInput(buf);
-
-  return;
-
-  for(string addr : peer->peersAddresses){
-    peer->sentId++;
-    
-    Message* message = new Message(
-      peer->sentId,
-      1,
-      "Hello",
-      peer->blocks,
-      string(peer->host + ":" + to_string(peer->port)),
-      peer->blocks.size()
-    );
-
-    peer->sendMessage(message, addr);
-  }
 }
 
 Message* Peer::messageFromBuffer(evbuffer* input){
@@ -312,11 +362,29 @@ void Peer::clientRead_cb(struct bufferevent* bev, void *ctx){
 
   struct evbuffer* input = bufferevent_get_input(bev);
 
-  Message* message = peer->messageFromBuffer(input);
+  Message* response = peer->messageFromBuffer(input);
   
-  cout << "read response as client: " << message->info << endl; 
+  if(response->type == HELLO){
+    peer->peersAddresses[response->hostName] = response->info;
+
+    vector<Block*> blocks = response->blocks;
+
+    string topHash = peer->blocks[peer->blocks.size() - 1]->hash;
+    long unsigned int index = -1;
+    for(long unsigned int i = 0; i < blocks.size(); i++){
+      if(blocks[i]->hash == topHash){
+        index = i;
+        break;
+      }
+    }
+
+    for(long unsigned int i = index + 1; i < blocks.size(); i++){
+      peer->blocks.push_back(blocks[i]);
+    }
+  }
 
   bufferevent_free(bev);
+  delete response;
   delete c;
 }
 
