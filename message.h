@@ -8,7 +8,8 @@ using namespace std;
 
 enum MessageType {
   HELLO,
-  QUIT
+  QUIT,
+  ERROR
 };
 
 class Message {

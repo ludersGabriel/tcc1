@@ -269,6 +269,33 @@ void Peer::read_cb(struct bufferevent* bev, void *ctx){
 
   string responseInfo;
 
+  string topHash = message->blocks[message->blockCount - 1]->hash;
+
+  int index = -1;
+  for(unsigned long int i = 0; i < peer->blocks.size(); i++){
+    if(peer->blocks[i]->hash == topHash){
+      index = i;
+      break;
+    }
+  }
+
+  if(index == -1){
+    responseInfo = "Invalid blockchain";
+
+    Message* response = new Message(
+      message->id,
+      ERROR,
+      responseInfo,
+      peer->hostName,
+      peer->blocks,
+      peer->blocks.size()
+    );
+
+    peer->messageToBuffer(output, response);
+
+    return;
+  }
+
   if(message->type == HELLO){
     responseInfo = peer->username;
     
@@ -363,8 +390,12 @@ void Peer::clientRead_cb(struct bufferevent* bev, void *ctx){
   struct evbuffer* input = bufferevent_get_input(bev);
 
   Message* response = peer->messageFromBuffer(input);
-  
-  if(response->type == HELLO){
+
+  if(response->type == ERROR){
+    cout << "Error: " << response->info << endl;
+    event_base_loopexit(peer->base, NULL);
+  }
+  else if(response->type == HELLO){
     peer->peersAddresses[response->hostName] = response->info;
 
     vector<Block*> blocks = response->blocks;
